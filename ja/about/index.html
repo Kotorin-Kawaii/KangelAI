@@ -42,6 +42,15 @@ nav a{padding:0 .25rem}
 .about-content p:last-child{margin-bottom:0}
 .about-section{background:#fff;border:2px solid #efb2d6;padding:1rem 1.5rem;margin:1.25rem 0}
 .about-content hr{border:0;border-top:1px solid #efb2d6;margin:1.5rem 0}
+.about-actions{display:flex;align-items:center;flex-wrap:wrap;gap:.7rem;margin:1.5rem 0}
+.about-action-enter,.about-like-button,.about-like-thanks{display:inline-flex;align-items:center;gap:.6rem;min-height:2.65rem;box-sizing:border-box;border:2px solid #b7247c;background:#fff;color:#8f1760;padding:.4rem .8rem;font:inherit;line-height:1.4;box-shadow:3px 3px #efb2d6}
+.about-action-enter{text-decoration:none}
+.about-like-button{cursor:pointer}
+.about-action-enter:hover,.about-like-button:hover:not(:disabled){background:#fff1f9;transform:translate(-1px,-1px)}
+.about-like-button:disabled{cursor:wait;opacity:.65}
+.about-like-count{font-variant-numeric:tabular-nums;color:#b7247c;white-space:nowrap}
+.about-like-thanks{color:#8f1760}
+[hidden]{display:none!important}
 @media(max-width:480px){
   main{padding:1.25rem 1rem}
   nav{margin-bottom:1.25rem}
@@ -96,7 +105,99 @@ nav a{padding:0 .25rem}
 <p>今では遊びに来てくれる人も少しずつ増えています。これからも、気が向いたときにふらっと覗きに来てもらえる場所になったら嬉しいです。</p>
 <p>一度でも配信を見に来てくれた方、そして今も作品を作ったり、紹介したり、この界隈を盛り上げている皆さんに感謝しています。</p>
 <p><strong>これからもNGO界隈が、もっと賑やかになりますように。</strong></p>
-<p><a href="https://kangelai.kotorin.cn/">配信を見に行く</a></p></article>
+</article>
+<div class="about-actions">
+<a class="about-action-enter" href="https://kangelai.kotorin.cn/">配信を見に行く</a>
+<button class="about-like-button" id="about-like-button" type="button" hidden>
+<span>よかったらいいねしてね</span><span class="about-like-count" data-about-like-count aria-label="いいねの合計">♡ —</span>
+</button>
+<span class="about-like-thanks" id="about-like-thanks" role="status" hidden>
+<span>ありがとう！</span><span class="about-like-count" data-about-like-count aria-label="いいねの合計">♡ —</span>
+</span>
+</div>
 </main>
+<script id="about-like-script">
+(() => {
+  const endpoint = 'https://kangelapi.kotorin.cn/public/about-likes';
+  const button = document.getElementById('about-like-button');
+  const thanks = document.getElementById('about-like-thanks');
+  const counters = [...document.querySelectorAll('[data-about-like-count]')];
+  const browserIdKey = 'kangel-browser-id-v1';
+  const likedKey = 'kangel-about-page-liked-v1';
+  let browserId;
+  let voteSucceeded = false;
+
+  const makeBrowserId = () => {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+    return hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+  };
+
+  const getBrowserId = () => {
+    if (browserId) return browserId;
+    try {
+      const stored = localStorage.getItem(browserIdKey);
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(stored || '')) {
+        browserId = stored.toLowerCase();
+      } else {
+        browserId = makeBrowserId();
+        localStorage.setItem(browserIdKey, browserId);
+      }
+    } catch {
+      browserId = makeBrowserId();
+    }
+    return browserId;
+  };
+
+  const setCount = total => {
+    const value = new Intl.NumberFormat(document.documentElement.lang || 'en').format(total);
+    counters.forEach(counter => { counter.textContent = '♡ ' + value; });
+  };
+  const showThanks = () => {
+    button.hidden = true;
+    thanks.hidden = false;
+  };
+
+  try {
+    if (localStorage.getItem(likedKey) === '1') showThanks();
+    else button.hidden = false;
+  } catch {
+    button.hidden = false;
+  }
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'X-Browser-ID': getBrowserId() },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('like request failed');
+      const result = await response.json();
+      voteSucceeded = true;
+      setCount(result.total_likes);
+      try { localStorage.setItem(likedKey, '1'); } catch { /* The server remains authoritative. */ }
+      showThanks();
+    } catch {
+      button.disabled = false;
+    }
+  });
+
+  fetch(endpoint, { headers: { 'X-Browser-ID': getBrowserId() }, cache: 'no-store' })
+    .then(response => response.ok ? response.json() : Promise.reject(new Error('count request failed')))
+    .then(result => {
+      if (!voteSucceeded) setCount(result.total_likes);
+      if (result.liked_by_you) {
+        try { localStorage.setItem(likedKey, '1'); } catch { /* The server remains authoritative. */ }
+        showThanks();
+      }
+    })
+    .catch(() => {});
+})();
+</script>
 </body>
 </html>
